@@ -1,0 +1,499 @@
+"use client";
+
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import type { Owner, Manager, Property, Receipt } from "@/lib/types";
+import { formatDateForInput } from "@/lib/utils";
+import {
+  fetchReceipts,
+  createReceipt,
+  fetchProperties,
+  fetchOwners,
+  fetchManagers,
+  deleteProperty,
+} from "@/lib/api";
+import ReceiptControls from "@/components/ReceiptControls";
+import ReceiptPreview from "@/components/ReceiptPreview";
+import ReceiptGeneration from "@/components/ReceiptGeneration";
+import SettingsEditor from "@/components/SettingsEditor";
+
+export default function HomePage() {
+  const [activeTab, setActiveTab] = useState<"controls" | "generation" | "settings">("controls");
+  const [receiptStep, setReceiptStep] = useState(1);
+
+  // Server-persisted data
+  const [templates, setTemplates] = useState<Property[]>([]);
+  const [savedReceipts, setSavedReceipts] = useState<Receipt[]>([]);
+  const [managers, setManagers] = useState<Manager[]>([]);
+  const [owners, setOwners] = useState<Owner[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Form state
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [receiptNo, setReceiptNo] = useState("0001");
+  const [receiptDate, setReceiptDate] = useState(formatDateForInput(new Date()));
+  const [selectedFloor, setSelectedFloor] = useState("");
+  const [selectedUnit, setSelectedUnit] = useState("");
+  const [tenantName, setTenantName] = useState("");
+  const [tenantPhone, setTenantPhone] = useState("");
+  const [periodStart, setPeriodStart] = useState(formatDateForInput(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
+  const [periodEnd, setPeriodEnd] = useState(formatDateForInput(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)));
+  const [paymentMode, setPaymentMode] = useState("Cash");
+  const [rentMaint, setRentMaint] = useState(0);
+  const [waterCharges, setWaterCharges] = useState(0);
+  const [rentalTax, setRentalTax] = useState(0);
+  const [prevUnit, setPrevUnit] = useState(0);
+  const [currUnit, setCurrUnit] = useState(0);
+  const [elecRate, setElecRate] = useState(10);
+  const [balanceDue, setBalanceDue] = useState(0);
+  const [amountReceived, setAmountReceived] = useState(0);
+  const [selectedReceivedById, setSelectedReceivedById] = useState<number>(0);
+  const [lookupReceiptNo, setLookupReceiptNo] = useState("");
+
+  const receiptRef = useRef<HTMLDivElement>(null);
+  const isLookupRef = useRef(false);
+
+  // Load data from backend on mount
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [props, own, mgrs, rcpts] = await Promise.all([
+          fetchProperties(),
+          fetchOwners(),
+          fetchManagers(),
+          fetchReceipts(),
+        ]);
+        setTemplates(props);
+        setOwners(own);
+        setManagers(mgrs);
+        setSavedReceipts(rcpts);
+
+        if (props.length > 0) {
+          setSelectedTemplateId(String(props[0].id));
+        }
+        if (mgrs.length > 0) {
+          setSelectedReceivedById(mgrs[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to load data:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  const currentTemplate = templates.find((t) => String(t.id) === selectedTemplateId) || templates[0];
+  const templateOwner = owners.find((o) => o.id === currentTemplate?.ownerId) || owners[0];
+
+  // Auto-select first unit when template changes
+  useEffect(() => {
+    if (isLookupRef.current) {
+      isLookupRef.current = false;
+      return;
+    }
+    if (currentTemplate && currentTemplate.units.length > 0) {
+      const firstUnit = currentTemplate.units[0];
+      setSelectedFloor(firstUnit.floor);
+      setSelectedUnit(firstUnit.unit);
+      setTenantName(firstUnit.tenantName);
+      setTenantPhone(firstUnit.tenantPhone || "");
+      setRentMaint(firstUnit.rent);
+      setWaterCharges(firstUnit.water);
+      setRentalTax(firstUnit.tax);
+      setBalanceDue(firstUnit.prevBalance);
+    }
+  }, [selectedTemplateId]);
+
+  // Auto-increment receipt number when new receipts are saved
+  useEffect(() => {
+    if (savedReceipts.length > 0) {
+      const lastNo = Math.max(...savedReceipts.map((r) => parseInt(r.receiptNo, 10) || 0));
+      setReceiptNo(String(lastNo + 1).padStart(4, "0"));
+    } else {
+      setReceiptNo("0001");
+    }
+  }, [savedReceipts.length]);
+
+  const fetchPreviousBillData = useCallback(
+    (floor: string, unit: string, tenantName: string, defaultPrevBalance: number) => {
+      const lastReceiptForUnit = savedReceipts.find(
+        (r) =>
+          r.propertyName === currentTemplate?.name &&
+          r.floor === floor &&
+          r.unit === unit &&
+          r.tenantName === tenantName
+      );
+      if (lastReceiptForUnit) {
+        setPrevUnit(lastReceiptForUnit.currUnit);
+        const previousPendingBalance = lastReceiptForUnit.dueAmount > 0 ? lastReceiptForUnit.dueAmount : 0;
+        setBalanceDue(previousPendingBalance);
+      } else {
+        setPrevUnit(0);
+        setBalanceDue(defaultPrevBalance);
+      }
+    },
+    [savedReceipts, currentTemplate]
+  );
+
+  const handleUnitChange = (unitObj: Property["units"][0]) => {
+    setSelectedFloor(unitObj.floor);
+    setSelectedUnit(unitObj.unit);
+    setTenantName(unitObj.tenantName);
+    setTenantPhone(unitObj.tenantPhone || "");
+    setRentMaint(unitObj.rent);
+    setWaterCharges(unitObj.water);
+    setRentalTax(unitObj.tax);
+    fetchPreviousBillData(unitObj.floor, unitObj.unit, unitObj.tenantName, unitObj.prevBalance);
+  };
+
+  const handleLookupReceipt = () => {
+    const found = savedReceipts.find((r) => parseInt(r.receiptNo, 10) === parseInt(lookupReceiptNo, 10));
+    if (found) {
+      const matchedTemplate = templates.find((t) => t.name === found.propertyName);
+      if (matchedTemplate && String(matchedTemplate.id) !== selectedTemplateId) {
+        isLookupRef.current = true;
+        setSelectedTemplateId(String(matchedTemplate.id));
+      }
+      setReceiptNo(found.receiptNo);
+      setReceiptDate(found.date);
+      setTenantName(found.tenantName);
+      setTenantPhone(found.tenantPhone || "");
+      setSelectedFloor(found.floor);
+      setSelectedUnit(found.unit);
+      setPrevUnit(found.currUnit);
+      const previousPendingBalance = found.dueAmount > 0 ? found.dueAmount : 0;
+      setBalanceDue(previousPendingBalance);
+      setPeriodStart(found.periodStart);
+      setPeriodEnd(found.periodEnd);
+      setPaymentMode(found.paymentMode);
+      setRentMaint(found.rentMaint);
+      setWaterCharges(found.waterCharges);
+      setRentalTax(found.rentalTax);
+      setCurrUnit(0);
+      setElecRate(found.elecRate || 10);
+      setAmountReceived(0);
+      alert("Receipt details loaded! You can now edit and save changes.");
+    } else {
+      alert("Receipt not found!");
+    }
+  };
+
+  const goToGenerationTab = () => {
+    if (receiptStep === 1) {
+      if (!selectedUnit) {
+        alert("Please select a Floor & Unit before proceeding.");
+        return;
+      }
+      if (!tenantName.trim()) {
+        alert("Please enter a Tenant Name before proceeding.");
+        return;
+      }
+    }
+    setActiveTab("generation");
+    setReceiptStep(2);
+  };
+
+  const elecUnitsConsumed = Math.max(0, currUnit - prevUnit);
+  const elecTotalAmount = elecUnitsConsumed * elecRate;
+  const totalBalanceCurrentMonth = rentMaint + waterCharges + rentalTax + elecTotalAmount;
+  const totalAmountToBeReceived = totalBalanceCurrentMonth + balanceDue;
+  const dueAmount = totalAmountToBeReceived - amountReceived;
+  const isFullPaid = dueAmount <= 0 && totalAmountToBeReceived > 0;
+  const activeReceivedBy = managers.find((m) => m.id === selectedReceivedById) || managers[0];
+
+  const handleSaveReceipt = async () => {
+    if (!currentTemplate || !activeReceivedBy) return;
+    setIsSaving(true);
+    try {
+      await createReceipt({
+        receiptNo,
+        date: receiptDate,
+        propertyName: currentTemplate.name,
+        ownerName: templateOwner?.name || "",
+        floor: selectedFloor,
+        unit: selectedUnit,
+        tenantName,
+        tenantPhone,
+        periodStart,
+        periodEnd,
+        paymentMode,
+        rentMaint,
+        waterCharges,
+        rentalTax,
+        prevUnit,
+        currUnit,
+        elecRate,
+        elecTotalAmount,
+        totalAmountToBeReceived,
+        amountReceived,
+        dueAmount,
+        isFullPaid,
+        receivedBy: activeReceivedBy.name,
+      });
+
+      // Refresh receipts list
+      const updated = await fetchReceipts();
+      setSavedReceipts(updated);
+      alert(`Receipt #${receiptNo} saved successfully!`);
+      clearForm();
+    } catch (err) {
+      console.error("Failed to save receipt:", err);
+      alert("Failed to save receipt. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    const element = receiptRef.current;
+    if (!element) return;
+
+    // Dynamically import html2pdf (client-side only)
+    const html2pdf = (await import("html2pdf.js")).default;
+
+    const originalWidth = element.style.width;
+    const originalMaxWidth = element.style.maxWidth;
+    const originalMinHeight = element.style.minHeight;
+    const originalPadding = element.style.padding;
+    const originalMargin = element.style.margin;
+
+    element.style.width = "750px";
+    element.style.maxWidth = "750px";
+    element.style.minHeight = "auto";
+    element.style.padding = "24px";
+    element.style.margin = "0 auto";
+
+    const images = element.getElementsByTagName("img");
+    const imagePromises = Array.from(images).map((img) => {
+      if (img.complete) return Promise.resolve();
+      return new Promise((resolve) => {
+        img.onload = resolve;
+        img.onerror = resolve;
+      });
+    });
+    await Promise.all(imagePromises);
+
+    const opt = {
+      margin: [0.2, 0.2, 0.2, 0.2],
+      filename: `Rent_Receipt_${receiptNo}_${tenantName.replace(/\s+/g, "_")}.pdf`,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, scrollY: 0, scrollX: 0 },
+      jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
+      pagebreak: { mode: "avoid-all" },
+    };
+
+    try {
+      await html2pdf().set(opt).from(element).save();
+    } catch (err) {
+      console.error("PDF Export Error:", err);
+    } finally {
+      element.style.width = originalWidth;
+      element.style.maxWidth = originalMaxWidth;
+      element.style.minHeight = originalMinHeight;
+      element.style.padding = originalPadding;
+      element.style.margin = originalMargin;
+    }
+  };
+
+  const clearForm = () => {
+    setRentMaint(0);
+    setWaterCharges(0);
+    setRentalTax(0);
+    setPrevUnit(0);
+    setCurrUnit(0);
+    setElecRate(10);
+    setBalanceDue(0);
+    setAmountReceived(0);
+    setTenantName("");
+    setTenantPhone("");
+    const today = new Date();
+    const firstDayStr = formatDateForInput(new Date(today.getFullYear(), today.getMonth(), 1));
+    const lastDayStr = formatDateForInput(new Date(today.getFullYear(), today.getMonth() + 1, 0));
+    setPeriodStart(firstDayStr);
+    setPeriodEnd(lastDayStr);
+    setPaymentMode("Cash");
+  };
+
+  const handlePropertiesChange = async (props: Property[]) => {
+    setTemplates(props);
+  };
+
+  const handleDeleteProperty = async (id: number) => {
+    try {
+      await deleteProperty(id);
+      setTemplates(templates.filter((t) => t.id !== id));
+    } catch (err) {
+      console.error("Failed to delete property:", err);
+    }
+  };
+
+  const handleOwnersChange = (newOwners: Owner[]) => {
+    setOwners(newOwners);
+  };
+
+  const handleManagersChange = (newManagers: Manager[]) => {
+    setManagers(newManagers);
+  };
+
+  const handleReceiptsChange = (newReceipts: Receipt[]) => {
+    setSavedReceipts(newReceipts);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-500">Loading data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto p-4 md:p-6">
+      <header className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between border-b pb-4 bg-white p-4 rounded-xl shadow-sm">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Rent Receipt Portal</h1>
+          <p className="text-sm text-gray-500">Generate receipts, manage properties, and maintain tenant ledger</p>
+        </div>
+        <div className="mt-4 md:mt-0 flex gap-2">
+          <button
+            onClick={() => { setActiveTab("controls"); setReceiptStep(1); }}
+            className={`px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition ${
+              activeTab === "controls" ? "bg-indigo-600 text-white shadow" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            <span>📝</span> Receipt Controls
+          </button>
+          <button
+            onClick={goToGenerationTab}
+            className={`px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition ${
+              activeTab === "generation" ? "bg-indigo-600 text-white shadow" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            <span>🧾</span> Receipt Generation
+          </button>
+          <button
+            onClick={() => setActiveTab("settings")}
+            className={`px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition ${
+              activeTab === "settings" ? "bg-indigo-600 text-white shadow" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            <span>⚙️</span> Templates & Data Editor
+          </button>
+        </div>
+      </header>
+
+      {activeTab === "controls" && (
+        <ReceiptControls
+          templates={templates}
+          ownersList={owners}
+          managers={managers}
+          savedReceipts={savedReceipts}
+          currentTemplate={currentTemplate}
+          selectedTemplateId={selectedTemplateId}
+          setSelectedTemplateId={setSelectedTemplateId}
+          receiptNo={receiptNo}
+          setReceiptNo={setReceiptNo}
+          receiptDate={receiptDate}
+          setReceiptDate={setReceiptDate}
+          selectedFloor={selectedFloor}
+          selectedUnit={selectedUnit}
+          tenantName={tenantName}
+          setTenantName={setTenantName}
+          tenantPhone={tenantPhone}
+          setTenantPhone={setTenantPhone}
+          periodStart={periodStart}
+          setPeriodStart={setPeriodStart}
+          periodEnd={periodEnd}
+          setPeriodEnd={setPeriodEnd}
+          paymentMode={paymentMode}
+          setPaymentMode={setPaymentMode}
+          rentMaint={rentMaint}
+          setRentMaint={setRentMaint}
+          waterCharges={waterCharges}
+          setWaterCharges={setWaterCharges}
+          rentalTax={rentalTax}
+          setRentalTax={setRentalTax}
+          prevUnit={prevUnit}
+          setPrevUnit={setPrevUnit}
+          currUnit={currUnit}
+          setCurrUnit={setCurrUnit}
+          elecRate={elecRate}
+          setElecRate={setElecRate}
+          balanceDue={balanceDue}
+          setBalanceDue={setBalanceDue}
+          amountReceived={amountReceived}
+          setAmountReceived={setAmountReceived}
+          selectedReceivedById={selectedReceivedById}
+          setSelectedReceivedById={setSelectedReceivedById}
+          lookupReceiptNo={lookupReceiptNo}
+          setLookupReceiptNo={setLookupReceiptNo}
+          onLookupReceipt={handleLookupReceipt}
+          onUnitChange={handleUnitChange}
+          onGoToGeneration={goToGenerationTab}
+          elecUnitsConsumed={elecUnitsConsumed}
+          elecTotalAmount={elecTotalAmount}
+        />
+      )}
+
+      {activeTab === "generation" && (
+        <ReceiptGeneration
+          onBack={() => { setActiveTab("controls"); setReceiptStep(1); }}
+          onSave={handleSaveReceipt}
+          onDownloadPDF={handleDownloadPDF}
+          isSaving={isSaving}
+          receiptRef={receiptRef}
+          receiptNo={receiptNo}
+          tenantName={tenantName}
+        >
+          <ReceiptPreview
+            template={currentTemplate}
+            owner={templateOwner}
+            receiptNo={receiptNo}
+            receiptDate={receiptDate}
+            selectedFloor={selectedFloor}
+            selectedUnit={selectedUnit}
+            tenantName={tenantName}
+            tenantPhone={tenantPhone}
+            periodStart={periodStart}
+            periodEnd={periodEnd}
+            paymentMode={paymentMode}
+            rentMaint={rentMaint}
+            waterCharges={waterCharges}
+            rentalTax={rentalTax}
+            prevUnit={prevUnit}
+            currUnit={currUnit}
+            elecRate={elecRate}
+            elecUnitsConsumed={elecUnitsConsumed}
+            elecTotalAmount={elecTotalAmount}
+            totalBalanceCurrentMonth={totalBalanceCurrentMonth}
+            balanceDue={balanceDue}
+            totalAmountToBeReceived={totalAmountToBeReceived}
+            amountReceived={amountReceived}
+            dueAmount={dueAmount}
+            isFullPaid={isFullPaid}
+            activeReceivedBy={activeReceivedBy}
+            innerRef={receiptRef}
+          />
+        </ReceiptGeneration>
+      )}
+
+      {activeTab === "settings" && (
+        <SettingsEditor
+          templates={templates}
+          owners={owners}
+          managers={managers}
+          savedReceipts={savedReceipts}
+          onPropertiesChange={handlePropertiesChange}
+          onOwnersChange={handleOwnersChange}
+          onManagersChange={handleManagersChange}
+          onReceiptsChange={handleReceiptsChange}
+          onDeleteProperty={handleDeleteProperty}
+        />
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,84 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Owner {
+  id       Int      @id @default(autoincrement())
+  name     String
+  address  String   @default("")
+  phone    String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  properties Property[]
+}
+
+model Manager {
+  id       Int      @id @default(autoincrement())
+  name     String
+  address  String   @default("")
+  phone    String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Property {
+  id       Int      @id @default(autoincrement())
+  name     String
+  ownerId  Int
+  sealUrl  String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  owner    Owner    @relation(fields: [ownerId], references: [id])
+  units    Unit[]
+}
+
+model Unit {
+  id          Int    @id @default(autoincrement())
+  propertyId  Int
+  floor       String
+  unit        String
+  tenantName  String @default("")
+  tenantPhone String @default("")
+  rent        Float  @default(0)
+  water       Float  @default(0)
+  tax         Float  @default(0)
+  prevBalance Float  @default(0)
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model Receipt {
+  id                      Int      @id @default(autoincrement())
+  receiptNo               String
+  date                    String
+  propertyName            String
+  ownerName               String
+  floor                   String
+  unit                    String
+  tenantName              String
+  tenantPhone             String   @default("")
+  periodStart             String
+  periodEnd               String
+  paymentMode             String   @default("Cash")
+  rentMaint               Float    @default(0)
+  waterCharges            Float    @default(0)
+  rentalTax               Float    @default(0)
+  prevUnit                Float    @default(0)
+  currUnit                Float    @default(0)
+  elecRate                Float    @default(0)
+  elecTotalAmount         Float    @default(0)
+  totalAmountToBeReceived Float    @default(0)
+  amountReceived          Float    @default(0)
+  dueAmount               Float    @default(0)
+  isFullPaid              Boolean  @default(false)
+  receivedBy              String   @default("")
+  createdAt               DateTime @default(now())
+
+  @@index([receiptNo])
+  @@index([propertyName])
+  @@index([tenantName])
+}
