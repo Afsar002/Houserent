@@ -145,3 +145,9 @@ export async function deleteManager(id: number): Promise<{ success: boolean }> {
   const res = await fetch(`/api/managers?id=${id}`, { method: "DELETE" });
   return handleResponse<{ success: boolean }>(res);
 }
+
+// ---------- Receipts History ----------
+export async function clearReceipts(): Promise<{ success: boolean }> {
+  const res = await fetch("/api/receipts?clearAll=true", { method: "DELETE" });
+  return handleResponse<{ success: boolean }>(res);
+}

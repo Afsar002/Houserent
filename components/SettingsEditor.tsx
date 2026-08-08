@@ -9,11 +9,16 @@ interface SettingsEditorProps {
   owners: Owner[];
   managers: Manager[];
   savedReceipts: Receipt[];
-  onPropertiesChange: (props: Property[]) => void;
-  onOwnersChange: (owners: Owner[]) => void;
-  onManagersChange: (managers: Manager[]) => void;
-  onReceiptsChange: (receipts: Receipt[]) => void;
-  onDeleteProperty: (id: number) => void;
+  onAddProperty: (data: { name: string; ownerId: number; sealUrl?: string; units?: Property["units"] }) => Promise<void>;
+  onUpdateProperty: (id: number, data: { name?: string; ownerId?: number; sealUrl?: string; units?: Property["units"] }) => Promise<void>;
+  onDeleteProperty: (id: number) => Promise<void>;
+  onAddOwner: (data: { name: string; address?: string; phone?: string }) => Promise<Owner>;
+  onUpdateOwner: (id: number, data: { name?: string; address?: string; phone?: string }) => Promise<Owner>;
+  onDeleteOwner: (id: number) => Promise<void>;
+  onAddManager: (data: { name: string; address?: string; phone?: string }) => Promise<Manager>;
+  onUpdateManager: (id: number, data: { name?: string; address?: string; phone?: string }) => Promise<Manager>;
+  onDeleteManager: (id: number) => Promise<void>;
+  onClearReceipts: () => Promise<void>;
 }
 
 export default function SettingsEditor({
@@ -21,11 +26,16 @@ export default function SettingsEditor({
   owners,
   managers,
   savedReceipts,
-  onPropertiesChange,
-  onOwnersChange,
-  onManagersChange,
-  onReceiptsChange,
+  onAddProperty,
+  onUpdateProperty,
   onDeleteProperty,
+  onAddOwner,
+  onUpdateOwner,
+  onDeleteOwner,
+  onAddManager,
+  onUpdateManager,
+  onDeleteManager,
+  onClearReceipts,
 }: SettingsEditorProps) {
   const [showAddPropertyForm, setShowAddPropertyForm] = React.useState(false);
   const [newPropertyName, setNewPropertyName] = React.useState("");
@@ -45,72 +55,63 @@ export default function SettingsEditor({
   const [receiptsPage, setReceiptsPage] = React.useState(1);
   const RECEIPTS_PER_PAGE = 10;
 
-  const handleAddProperty = () => {
+  // Local state for inline table edits to prevent API spam on every keystroke
+  const [localTemplates, setLocalTemplates] = React.useState<Property[]>(templates);
+
+  React.useEffect(() => {
+    setLocalTemplates(templates);
+  }, [templates]);
+
+  const handleAddProperty = async () => {
     if (!newPropertyName.trim()) {
       alert("Please enter property name");
       return;
     }
-    onPropertiesChange([
-      ...templates,
-      {
-        id: Date.now(),
-        name: newPropertyName,
-        ownerId: owners[0]?.id || 1,
-        units: [],
-        sealUrl: "",
-      },
-    ]);
+    await onAddProperty({
+      name: newPropertyName,
+      ownerId: owners[0]?.id || 1,
+      sealUrl: "",
+      units: [],
+    });
     setNewPropertyName("");
     setShowAddPropertyForm(false);
-    alert("Property added successfully!");
   };
 
-  const handleDeleteProperty = (id: number) => {
+  const handleDeleteProperty = async (id: number) => {
     if (confirm("Are you sure you want to delete this property?")) {
-      onDeleteProperty(id);
+      await onDeleteProperty(id);
     }
   };
 
-  const handleAddOwner = () => {
+  const handleAddOwner = async () => {
     if (!ownerName.trim()) {
       alert("Please enter owner name");
       return;
     }
-    onOwnersChange([
-      ...owners,
-      { id: Date.now(), name: ownerName, address: ownerAddress, phone: ownerPhone },
-    ]);
+    await onAddOwner({ name: ownerName, address: ownerAddress, phone: ownerPhone });
     resetOwnerForm();
-    alert("Owner added successfully!");
   };
 
-  const handleUpdateOwner = () => {
-    if (!ownerName.trim()) {
+  const handleUpdateOwner = async () => {
+    if (!ownerName.trim() || !editingOwnerId) {
       alert("Please enter owner name");
       return;
     }
-    onOwnersChange(
-      owners.map((o) =>
-        o.id === editingOwnerId
-          ? { ...o, name: ownerName, address: ownerAddress, phone: ownerPhone }
-          : o
-      )
-    );
+    await onUpdateOwner(editingOwnerId, { name: ownerName, address: ownerAddress, phone: ownerPhone });
     resetOwnerForm();
-    alert("Owner updated successfully!");
   };
 
-  const handleDeleteOwner = (id: number) => {
+  const handleDeleteOwner = async (id: number) => {
     if (confirm("Are you sure you want to delete this owner?")) {
-      onOwnersChange(owners.filter((o) => o.id !== id));
+      await onDeleteOwner(id);
     }
   };
 
   const handleEditOwner = (owner: Owner) => {
     setEditingOwnerId(owner.id);
     setOwnerName(owner.name);
-    setOwnerAddress(owner.address);
-    setOwnerPhone(owner.phone);
+    setOwnerAddress(owner.address || "");
+    setOwnerPhone(owner.phone || "");
     setShowOwnerForm(true);
   };
 
@@ -122,46 +123,35 @@ export default function SettingsEditor({
     setOwnerPhone("");
   };
 
-  const handleAddManager = () => {
+  const handleAddManager = async () => {
     if (!managerName.trim()) {
       alert("Please enter manager name");
       return;
     }
-    onManagersChange([
-      ...managers,
-      { id: Date.now(), name: managerName, address: managerAddress, phone: managerPhone },
-    ]);
+    await onAddManager({ name: managerName, address: managerAddress, phone: managerPhone });
     resetManagerForm();
-    alert("Manager added successfully!");
   };
 
-  const handleUpdateManager = () => {
-    if (!managerName.trim()) {
+  const handleUpdateManager = async () => {
+    if (!managerName.trim() || !editingManagerId) {
       alert("Please enter manager name");
       return;
     }
-    onManagersChange(
-      managers.map((m) =>
-        m.id === editingManagerId
-          ? { ...m, name: managerName, address: managerAddress, phone: managerPhone }
-          : m
-      )
-    );
+    await onUpdateManager(editingManagerId, { name: managerName, address: managerAddress, phone: managerPhone });
     resetManagerForm();
-    alert("Manager updated successfully!");
   };
 
-  const handleDeleteManager = (id: number) => {
+  const handleDeleteManager = async (id: number) => {
     if (confirm("Are you sure you want to delete this manager?")) {
-      onManagersChange(managers.filter((m) => m.id !== id));
+      await onDeleteManager(id);
     }
   };
 
   const handleEditManager = (manager: Manager) => {
     setEditingManagerId(manager.id);
     setManagerName(manager.name);
-    setManagerAddress(manager.address);
-    setManagerPhone(manager.phone);
+    setManagerAddress(manager.address || "");
+    setManagerPhone(manager.phone || "");
     setShowManagerForm(true);
   };
 
@@ -178,11 +168,89 @@ export default function SettingsEditor({
     const reader = new FileReader();
     reader.onloadend = async () => {
       const compressed = await compressImage(reader.result as string);
-      const updated = [...templates];
-      updated[index].sealUrl = compressed;
-      onPropertiesChange(updated);
+      const tpl = localTemplates[index];
+      await onUpdateProperty(tpl.id, {
+        name: tpl.name,
+        ownerId: tpl.ownerId,
+        sealUrl: compressed,
+        units: tpl.units,
+      });
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleLocalPropertyChange = (index: number, field: "name" | "ownerId", value: string | number) => {
+    const updated = [...localTemplates];
+    if (field === "name") updated[index].name = value as string;
+    if (field === "ownerId") updated[index].ownerId = Number(value);
+    setLocalTemplates(updated);
+  };
+
+  const handleCommitPropertyChange = async (index: number) => {
+    const tpl = localTemplates[index];
+    await onUpdateProperty(tpl.id, {
+      name: tpl.name,
+      ownerId: tpl.ownerId,
+      sealUrl: tpl.sealUrl,
+      units: tpl.units,
+    });
+  };
+
+  const handleLocalUnitChange = (index: number, uIdx: number, field: string, value: any) => {
+    const updated = [...localTemplates];
+    const unit = { ...updated[index].units[uIdx] };
+    (unit as any)[field] = field === "rent" || field === "water" || field === "tax" || field === "prevBalance" ? Number(value) : value;
+    updated[index].units[uIdx] = unit;
+    setLocalTemplates(updated);
+  };
+
+  const handleCommitUnitChange = async (index: number) => {
+    const tpl = localTemplates[index];
+    await onUpdateProperty(tpl.id, {
+      name: tpl.name,
+      ownerId: tpl.ownerId,
+      sealUrl: tpl.sealUrl,
+      units: tpl.units,
+    });
+  };
+
+  const handleAddUnit = async (index: number) => {
+    const tpl = localTemplates[index];
+    const updatedUnits = [...tpl.units, {
+      floor: "1st Floor",
+      unit: "Unit NEW",
+      tenantName: "New Tenant",
+      tenantPhone: "",
+      rent: 10000,
+      water: 500,
+      tax: 0,
+      prevBalance: 0,
+    }];
+    await onUpdateProperty(tpl.id, {
+      name: tpl.name,
+      ownerId: tpl.ownerId,
+      sealUrl: tpl.sealUrl,
+      units: updatedUnits,
+    });
+  };
+
+  const handleDeleteUnit = async (index: number, uIdx: number) => {
+    const tpl = localTemplates[index];
+    const updatedUnits = [...tpl.units];
+    updatedUnits.splice(uIdx, 1);
+    await onUpdateProperty(tpl.id, {
+      name: tpl.name,
+      ownerId: tpl.ownerId,
+      sealUrl: tpl.sealUrl,
+      units: updatedUnits,
+    });
+  };
+
+  const handleClearAllHistory = async () => {
+    if (confirm("Are you sure you want to clear all history?")) {
+      await onClearReceipts();
+      setReceiptsPage(1);
+    }
   };
 
   const totalPages = Math.max(1, Math.ceil(savedReceipts.length / RECEIPTS_PER_PAGE));
@@ -234,7 +302,7 @@ export default function SettingsEditor({
         )}
 
         <div className="space-y-6">
-          {templates.map((tpl, index) => (
+          {localTemplates.map((tpl, index) => (
             <div key={tpl.id} className="border rounded-xl p-5 bg-gray-50 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -242,11 +310,8 @@ export default function SettingsEditor({
                   <input
                     type="text"
                     value={tpl.name}
-                    onChange={(e) => {
-                      const updated = [...templates];
-                      updated[index].name = e.target.value;
-                      onPropertiesChange(updated);
-                    }}
+                    onChange={(e) => handleLocalPropertyChange(index, "name", e.target.value)}
+                    onBlur={() => handleCommitPropertyChange(index)}
                     className="w-full border p-2 rounded text-sm bg-white font-semibold"
                   />
                 </div>
@@ -255,9 +320,8 @@ export default function SettingsEditor({
                   <select
                     value={tpl.ownerId}
                     onChange={(e) => {
-                      const updated = [...templates];
-                      updated[index].ownerId = Number(e.target.value);
-                      onPropertiesChange(updated);
+                      handleLocalPropertyChange(index, "ownerId", e.target.value);
+                      handleCommitPropertyChange(index);
                     }}
                     className="w-full border p-2 rounded text-sm bg-white"
                   >
@@ -292,11 +356,8 @@ export default function SettingsEditor({
                             <input
                               type="text"
                               value={u.floor}
-                              onChange={(e) => {
-                                const updated = [...templates];
-                                updated[index].units[uIdx].floor = e.target.value;
-                                onPropertiesChange(updated);
-                              }}
+                              onChange={(e) => handleLocalUnitChange(index, uIdx, "floor", e.target.value)}
+                              onBlur={() => handleCommitUnitChange(index)}
                               className="w-full border p-1 rounded"
                             />
                           </td>
@@ -304,11 +365,8 @@ export default function SettingsEditor({
                             <input
                               type="text"
                               value={u.unit}
-                              onChange={(e) => {
-                                const updated = [...templates];
-                                updated[index].units[uIdx].unit = e.target.value;
-                                onPropertiesChange(updated);
-                              }}
+                              onChange={(e) => handleLocalUnitChange(index, uIdx, "unit", e.target.value)}
+                              onBlur={() => handleCommitUnitChange(index)}
                               className="w-full border p-1 rounded"
                             />
                           </td>
@@ -316,23 +374,17 @@ export default function SettingsEditor({
                             <input
                               type="text"
                               value={u.tenantName}
-                              onChange={(e) => {
-                                const updated = [...templates];
-                                updated[index].units[uIdx].tenantName = e.target.value;
-                                onPropertiesChange(updated);
-                              }}
+                              onChange={(e) => handleLocalUnitChange(index, uIdx, "tenantName", e.target.value)}
+                              onBlur={() => handleCommitUnitChange(index)}
                               className="w-full border p-1 rounded"
                             />
                           </td>
                           <td className="p-1.5">
                             <input
                               type="text"
-                              value={u.tenantPhone}
-                              onChange={(e) => {
-                                const updated = [...templates];
-                                updated[index].units[uIdx].tenantPhone = e.target.value;
-                                onPropertiesChange(updated);
-                              }}
+                              value={u.tenantPhone || ""}
+                              onChange={(e) => handleLocalUnitChange(index, uIdx, "tenantPhone", e.target.value)}
+                              onBlur={() => handleCommitUnitChange(index)}
                               className="w-full border p-1 rounded"
                             />
                           </td>
@@ -340,11 +392,8 @@ export default function SettingsEditor({
                             <input
                               type="number"
                               value={u.rent}
-                              onChange={(e) => {
-                                const updated = [...templates];
-                                updated[index].units[uIdx].rent = Number(e.target.value);
-                                onPropertiesChange(updated);
-                              }}
+                              onChange={(e) => handleLocalUnitChange(index, uIdx, "rent", e.target.value)}
+                              onBlur={() => handleCommitUnitChange(index)}
                               className="w-full border p-1 rounded text-right"
                             />
                           </td>
@@ -352,11 +401,8 @@ export default function SettingsEditor({
                             <input
                               type="number"
                               value={u.water}
-                              onChange={(e) => {
-                                const updated = [...templates];
-                                updated[index].units[uIdx].water = Number(e.target.value);
-                                onPropertiesChange(updated);
-                              }}
+                              onChange={(e) => handleLocalUnitChange(index, uIdx, "water", e.target.value)}
+                              onBlur={() => handleCommitUnitChange(index)}
                               className="w-full border p-1 rounded text-right"
                             />
                           </td>
@@ -364,11 +410,8 @@ export default function SettingsEditor({
                             <input
                               type="number"
                               value={u.tax}
-                              onChange={(e) => {
-                                const updated = [...templates];
-                                updated[index].units[uIdx].tax = Number(e.target.value);
-                                onPropertiesChange(updated);
-                              }}
+                              onChange={(e) => handleLocalUnitChange(index, uIdx, "tax", e.target.value)}
+                              onBlur={() => handleCommitUnitChange(index)}
                               className="w-full border p-1 rounded text-right"
                             />
                           </td>
@@ -376,48 +419,20 @@ export default function SettingsEditor({
                             <input
                               type="number"
                               value={u.prevBalance}
-                              onChange={(e) => {
-                                const updated = [...templates];
-                                updated[index].units[uIdx].prevBalance = Number(e.target.value);
-                                onPropertiesChange(updated);
-                              }}
+                              onChange={(e) => handleLocalUnitChange(index, uIdx, "prevBalance", e.target.value)}
+                              onBlur={() => handleCommitUnitChange(index)}
                               className="w-full border p-1 rounded text-right text-red-600"
                             />
                           </td>
                           <td className="p-1.5 text-center">
-                            <button
-                              onClick={() => {
-                                const updated = [...templates];
-                                updated[index].units.splice(uIdx, 1);
-                                onPropertiesChange(updated);
-                              }}
-                              className="text-red-600 hover:text-red-800 font-bold text-xs"
-                            >
-                              ✕
-                            </button>
+                            <button onClick={() => handleDeleteUnit(index, uIdx)} className="text-red-600 hover:text-red-800 font-bold text-xs">✕</button>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-                <button
-                  onClick={() => {
-                    const updated = [...templates];
-                    updated[index].units.push({
-                      floor: "1st Floor",
-                      unit: "Unit NEW",
-                      tenantName: "New Tenant",
-                      tenantPhone: "",
-                      rent: 10000,
-                      water: 500,
-                      tax: 0,
-                      prevBalance: 0,
-                    });
-                    onPropertiesChange(updated);
-                  }}
-                  className="mt-2 text-xs bg-indigo-50 text-indigo-600 font-semibold px-3 py-1.5 rounded hover:bg-indigo-100"
-                >
+                <button onClick={() => handleAddUnit(index)} className="mt-2 text-xs bg-indigo-50 text-indigo-600 font-semibold px-3 py-1.5 rounded hover:bg-indigo-100">
                   + Add Unit Row
                 </button>
               </div>
@@ -437,10 +452,7 @@ export default function SettingsEditor({
                   )}
                 </div>
                 <div className="mt-2 flex gap-2">
-                  <button
-                    onClick={() => handleDeleteProperty(tpl.id)}
-                    className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded hover:bg-red-100"
-                  >
+                  <button onClick={() => handleDeleteProperty(tpl.id)} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded hover:bg-red-100">
                     Delete Property
                   </button>
                 </div>
@@ -569,7 +581,7 @@ export default function SettingsEditor({
             <span>📜</span> Saved Receipts History ({savedReceipts.length})
           </h2>
           {savedReceipts.length > 0 && (
-            <button onClick={() => { if (confirm("Are you sure you want to clear all history?")) onReceiptsChange([]); }} className="text-xs text-red-600 hover:underline">
+            <button onClick={handleClearAllHistory} className="text-xs text-red-600 hover:underline">
               Clear Log
             </button>
           )}

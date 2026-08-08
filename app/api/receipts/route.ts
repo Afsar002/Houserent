@@ -90,3 +90,27 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// DELETE /api/receipts?clearAll=true - delete all receipts
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const clearAll = searchParams.get("clearAll");
+
+    if (clearAll === "true") {
+      await prisma.receipt.deleteMany({});
+      return NextResponse.json({ success: true, deleted: true });
+    }
+
+    return NextResponse.json(
+      { error: "Invalid request" },
+      { status: 400 }
+    );
+  } catch (error) {
+    console.error("Error deleting receipts:", error);
+    return NextResponse.json(
+      { error: "Failed to delete receipts" },
+      { status: 500 }
+    );
+  }
+}

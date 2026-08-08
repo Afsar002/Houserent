@@ -9,7 +9,16 @@ import {
   fetchProperties,
   fetchOwners,
   fetchManagers,
+  createProperty,
+  updateProperty,
   deleteProperty,
+  createOwner,
+  updateOwner,
+  deleteOwner,
+  createManager,
+  updateManager,
+  deleteManager,
+  clearReceipts,
 } from "@/lib/api";
 import ReceiptControls from "@/components/ReceiptControls";
 import ReceiptPreview from "@/components/ReceiptPreview";
@@ -315,8 +324,23 @@ export default function HomePage() {
     setPaymentMode("Cash");
   };
 
-  const handlePropertiesChange = async (props: Property[]) => {
-    setTemplates(props);
+  const handleAddProperty = async (data: { name: string; ownerId: number; sealUrl?: string; units?: Property["units"] }) => {
+    try {
+      const created = await createProperty(data);
+      setTemplates([...templates, created]);
+    } catch (err) {
+      console.error("Failed to add property:", err);
+      alert("Failed to add property. Please try again.");
+    }
+  };
+
+  const handleUpdateProperty = async (id: number, data: { name?: string; ownerId?: number; sealUrl?: string; units?: Property["units"] }) => {
+    try {
+      const updated = await updateProperty(id, data);
+      setTemplates(templates.map((t) => (t.id === id ? updated : t)));
+    } catch (err) {
+      console.error("Failed to update property:", err);
+    }
   };
 
   const handleDeleteProperty = async (id: number) => {
@@ -328,16 +352,79 @@ export default function HomePage() {
     }
   };
 
-  const handleOwnersChange = (newOwners: Owner[]) => {
-    setOwners(newOwners);
+  const handleAddOwner = async (data: { name: string; address?: string; phone?: string }) => {
+    try {
+      const created = await createOwner(data);
+      setOwners([...owners, created]);
+      return created;
+    } catch (err) {
+      console.error("Failed to add owner:", err);
+      alert("Failed to add owner. Please try again.");
+      throw err;
+    }
   };
 
-  const handleManagersChange = (newManagers: Manager[]) => {
-    setManagers(newManagers);
+  const handleUpdateOwner = async (id: number, data: { name?: string; address?: string; phone?: string }) => {
+    try {
+      const updated = await updateOwner(id, data);
+      setOwners(owners.map((o) => (o.id === id ? updated : o)));
+      return updated;
+    } catch (err) {
+      console.error("Failed to update owner:", err);
+      alert("Failed to update owner. Please try again.");
+      throw err;
+    }
   };
 
-  const handleReceiptsChange = (newReceipts: Receipt[]) => {
-    setSavedReceipts(newReceipts);
+  const handleDeleteOwner = async (id: number) => {
+    try {
+      await deleteOwner(id);
+      setOwners(owners.filter((o) => o.id !== id));
+    } catch (err) {
+      console.error("Failed to delete owner:", err);
+    }
+  };
+
+  const handleAddManager = async (data: { name: string; address?: string; phone?: string }) => {
+    try {
+      const created = await createManager(data);
+      setManagers([...managers, created]);
+      return created;
+    } catch (err) {
+      console.error("Failed to add manager:", err);
+      alert("Failed to add manager. Please try again.");
+      throw err;
+    }
+  };
+
+  const handleUpdateManager = async (id: number, data: { name?: string; address?: string; phone?: string }) => {
+    try {
+      const updated = await updateManager(id, data);
+      setManagers(managers.map((m) => (m.id === id ? updated : m)));
+      return updated;
+    } catch (err) {
+      console.error("Failed to update manager:", err);
+      alert("Failed to update manager. Please try again.");
+      throw err;
+    }
+  };
+
+  const handleDeleteManager = async (id: number) => {
+    try {
+      await deleteManager(id);
+      setManagers(managers.filter((m) => m.id !== id));
+    } catch (err) {
+      console.error("Failed to delete manager:", err);
+    }
+  };
+
+  const handleClearReceipts = async () => {
+    try {
+      await clearReceipts();
+      setSavedReceipts([]);
+    } catch (err) {
+      console.error("Failed to clear receipts:", err);
+    }
   };
 
   if (loading) {
@@ -487,11 +574,16 @@ export default function HomePage() {
           owners={owners}
           managers={managers}
           savedReceipts={savedReceipts}
-          onPropertiesChange={handlePropertiesChange}
-          onOwnersChange={handleOwnersChange}
-          onManagersChange={handleManagersChange}
-          onReceiptsChange={handleReceiptsChange}
+          onAddProperty={handleAddProperty}
+          onUpdateProperty={handleUpdateProperty}
           onDeleteProperty={handleDeleteProperty}
+          onAddOwner={handleAddOwner}
+          onUpdateOwner={handleUpdateOwner}
+          onDeleteOwner={handleDeleteOwner}
+          onAddManager={handleAddManager}
+          onUpdateManager={handleUpdateManager}
+          onDeleteManager={handleDeleteManager}
+          onClearReceipts={handleClearReceipts}
         />
       )}
     </div>
