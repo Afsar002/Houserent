@@ -216,7 +216,7 @@ export default function SettingsEditor({
 
   const handleAddUnit = async (index: number) => {
     const tpl = localTemplates[index];
-    const updatedUnits = [{
+    const updatedUnits = [...tpl.units, {
       floor: "",
       unit: "",
       tenantName: "",
@@ -225,7 +225,7 @@ export default function SettingsEditor({
       water: 0,
       tax: 0,
       prevBalance: 0,
-    }, ...tpl.units];
+    }];
     await onUpdateProperty(tpl.id, {
       name: tpl.name,
       ownerId: tpl.ownerId,
