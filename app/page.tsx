@@ -202,7 +202,7 @@ export default function HomePage() {
       setRentalTax(found.rentalTax);
       setPrevUnit(found.prevUnit);
       setCurrUnit(found.currUnit);
-      setElecRate(found.elecRate || DEFAULT_ELEC_RATE);
+      setElecRate(found.elecRate ?? DEFAULT_ELEC_RATE);
       setAmountReceived(found.amountReceived);
 
       // Restore the "Received By Manager" dropdown from the saved record.
