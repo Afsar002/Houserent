@@ -263,7 +263,9 @@ export default function SettingsEditor({
   const latestReceiptIds = React.useMemo(() => {
     const groups = new Map<string, Receipt[]>();
     for (const r of savedReceipts) {
-      const key = `${r.propertyName}|${r.floor}|${r.unit}|${r.tenantName}`;
+      // JSON-encoded tuple so the chain key is unambiguous (field values can't
+      // collide with a separator) and never mutated.
+      const key = JSON.stringify([r.propertyName, r.floor, r.unit, r.tenantName]);
       const list = groups.get(key) ?? [];
       list.push(r);
       groups.set(key, list);

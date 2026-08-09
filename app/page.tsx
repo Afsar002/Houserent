@@ -61,6 +61,10 @@ export default function HomePage() {
 
   const receiptRef = useRef<HTMLDivElement>(null);
   const isLookupRef = useRef(false);
+  // Monotonic token bumped on every lookup so the guard-release effect always
+  // fires, even when receiptNo/template don't change (e.g. re-fetching the same
+  // receipt).
+  const [lookupToken, setLookupToken] = useState(0);
 
   // Load data from backend on mount
   useEffect(() => {
@@ -115,12 +119,13 @@ export default function HomePage() {
   }, [selectedTemplateId]);
 
   // Release the lookup guard after the hydration render completes, so a later
-  // manual template change is not accidentally swallowed.
+  // manual template change is not accidentally swallowed. Keyed on a monotonic
+  // token (not receiptNo) so re-fetching the same receipt still releases it.
   useEffect(() => {
-    if (isLookupRef.current) {
+    if (lookupToken > 0 && isLookupRef.current) {
       isLookupRef.current = false;
     }
-  }, [receiptNo]);
+  }, [lookupToken]);
 
   // Auto-increment receipt number when new receipts are saved
   useEffect(() => {
@@ -170,6 +175,7 @@ export default function HomePage() {
       // Block auto-calculation side-effects (template auto-select / prev-balance
       // carry-forward) while we hydrate the historical snapshot below.
       isLookupRef.current = true;
+      setLookupToken((t) => t + 1);
 
       const matchedTemplate = templates.find((t) => t.name === found.propertyName);
       if (matchedTemplate && String(matchedTemplate.id) !== selectedTemplateId) {
@@ -196,6 +202,12 @@ export default function HomePage() {
       setElecRate(found.elecRate || 10);
       setAmountReceived(found.amountReceived);
 
+      // Restore the "Received By Manager" dropdown from the saved record.
+      const matchedManager = managers.find((m) => m.name === found.receivedBy);
+      if (matchedManager) {
+        setSelectedReceivedById(matchedManager.id);
+      }
+
       // The "Previous Balance Due" printed on this receipt is the balance that
       // was carried INTO it. It is not persisted as its own column, but it is
       // recovered exactly from the saved snapshot:
@@ -207,7 +219,11 @@ export default function HomePage() {
         (found.elecTotalAmount || 0);
       setBalanceDue((found.totalAmountToBeReceived || 0) - currentMonthTotal);
 
-      alert("Receipt details loaded! You can now edit and save changes.");
+      let message = "Receipt details loaded! You can now edit and save changes.";
+      if (!matchedTemplate) {
+        message = `Warning: The property "${found.propertyName}" for Receipt #${found.receiptNo} is no longer available in your templates. The receipt was loaded, but select a valid template before saving changes.`;
+      }
+      alert(message);
     } else {
       alert("Receipt not found!");
     }
@@ -241,14 +257,34 @@ export default function HomePage() {
       throw new Error("Missing template or manager");
     }
 
-    // Idempotency guard: if this exact receipt snapshot is already persisted,
-    // don't create a duplicate ledger row (e.g. Save → Share, or Share twice).
+    // Idempotency guard: skip only when the ENTIRE snapshot already exists, so
+    // Save → Share / Share-twice don't duplicate the ledger row, while a genuine
+    // edit of any field still persists a new record.
     const alreadySaved = savedReceipts.some(
       (r) =>
         r.receiptNo === receiptNo &&
+        r.date === receiptDate &&
+        r.propertyName === currentTemplate.name &&
+        r.ownerName === (templateOwner?.name || "") &&
+        r.floor === selectedFloor &&
+        r.unit === selectedUnit &&
         r.tenantName === tenantName &&
+        r.tenantPhone === tenantPhone &&
+        r.periodStart === periodStart &&
+        r.periodEnd === periodEnd &&
+        r.paymentMode === paymentMode &&
+        r.rentMaint === rentMaint &&
+        r.waterCharges === waterCharges &&
+        r.rentalTax === rentalTax &&
+        r.prevUnit === prevUnit &&
+        r.currUnit === currUnit &&
+        r.elecRate === elecRate &&
+        r.elecTotalAmount === elecTotalAmount &&
+        r.totalAmountToBeReceived === totalAmountToBeReceived &&
         r.amountReceived === amountReceived &&
-        r.dueAmount === dueAmount
+        r.dueAmount === dueAmount &&
+        r.isFullPaid === isFullPaid &&
+        r.receivedBy === activeReceivedBy.name
     );
     if (alreadySaved) return;
 
@@ -331,57 +367,61 @@ export default function HomePage() {
       element.style.padding = "24px";
       element.style.margin = "0 auto";
 
-      const images = element.getElementsByTagName("img");
-      const imagePromises = Array.from(images).map((img) => {
-        if (img.complete) return Promise.resolve();
-        return new Promise((resolve) => {
-          img.onload = resolve;
-          img.onerror = resolve;
-        });
-      });
-      await Promise.all(imagePromises);
-
-      const opt = {
-        margin: [0.2, 0.2, 0.2, 0.2],
-        filename: `Rent_Receipt_${receiptNo}_${tenantName.replace(/\s+/g, "_")}.pdf`,
-        image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, scrollY: 0, scrollX: 0 },
-        jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
-        pagebreak: { mode: "avoid-all" },
-      };
-
-      const blob = await html2pdf().set(opt).from(element).output("blob");
-      const pdfFile = new File(
-        [blob],
-        `Rent_Receipt_${receiptNo}_${tenantName.replace(/\s+/g, "_")}.pdf`,
-        { type: "application/pdf" }
-      );
-
-      // 3. Native Web Share sheet on mobile; standard download fallback elsewhere.
-      if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-        try {
-          await navigator.share({
-            files: [pdfFile],
-            title: `Rent Receipt #${receiptNo}`,
-            text: `Rent Receipt #${receiptNo} for ${tenantName}`,
+      try {
+        const images = element.getElementsByTagName("img");
+        const imagePromises = Array.from(images).map((img) => {
+          if (img.complete) return Promise.resolve();
+          return new Promise((resolve) => {
+            img.onload = resolve;
+            img.onerror = resolve;
           });
-        } catch (shareErr) {
-          // User dismissed the sheet (AbortError) or sharing is unavailable —
-          // fall back to a direct download.
-          if (shareErr instanceof Error && shareErr.name !== "AbortError") {
+        });
+        await Promise.all(imagePromises);
+
+        const opt = {
+          margin: [0.2, 0.2, 0.2, 0.2],
+          filename: `Rent_Receipt_${receiptNo}_${tenantName.replace(/\s+/g, "_")}.pdf`,
+          image: { type: "jpeg", quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, scrollY: 0, scrollX: 0 },
+          jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
+          pagebreak: { mode: "avoid-all" },
+        };
+
+        const blob = await html2pdf().set(opt).from(element).output("blob");
+        const pdfFile = new File(
+          [blob],
+          `Rent_Receipt_${receiptNo}_${tenantName.replace(/\s+/g, "_")}.pdf`,
+          { type: "application/pdf" }
+        );
+
+        // 3. Native Web Share sheet on mobile; standard download fallback elsewhere.
+        if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+          try {
+            await navigator.share({
+              files: [pdfFile],
+              title: `Rent Receipt #${receiptNo}`,
+              text: `Rent Receipt #${receiptNo} for ${tenantName}`,
+            });
+          } catch (shareErr) {
+            if (shareErr instanceof Error && shareErr.name === "AbortError") {
+              // User dismissed the share sheet — stop WITHOUT downloading.
+              return;
+            }
+            // Genuine share failure → fall back to a direct download.
             console.error("Web Share failed:", shareErr);
+            await html2pdf().set(opt).from(element).save();
           }
+        } else {
           await html2pdf().set(opt).from(element).save();
         }
-      } else {
-        await html2pdf().set(opt).from(element).save();
+      } finally {
+        // Always restore the capture styling, even on errors or cancellation.
+        element.style.width = originalWidth;
+        element.style.maxWidth = originalMaxWidth;
+        element.style.minHeight = originalMinHeight;
+        element.style.padding = originalPadding;
+        element.style.margin = originalMargin;
       }
-
-      element.style.width = originalWidth;
-      element.style.maxWidth = originalMaxWidth;
-      element.style.minHeight = originalMinHeight;
-      element.style.padding = originalPadding;
-      element.style.margin = originalMargin;
     } catch (err) {
       console.error("PDF Export Error:", err);
       alert("Failed to generate / share the PDF. Please try again.");
