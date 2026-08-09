@@ -217,12 +217,12 @@ export default function SettingsEditor({
   const handleAddUnit = async (index: number) => {
     const tpl = localTemplates[index];
     const updatedUnits = [...tpl.units, {
-      floor: "1st Floor",
-      unit: "Unit NEW",
-      tenantName: "New Tenant",
+      floor: "",
+      unit: "",
+      tenantName: "",
       tenantPhone: "",
-      rent: 10000,
-      water: 500,
+      rent: 0,
+      water: 0,
       tax: 0,
       prevBalance: 0,
     }];

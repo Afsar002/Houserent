@@ -48,8 +48,7 @@ A full-stack Next.js (App Router) application for generating rent receipts, mana
 │   ├── types.ts            # Shared TypeScript interfaces
 │   └── utils.ts            # numberToWords, compressImage, date helpers
 ├── prisma/
-│   ├── schema.prisma       # Database models
-│   └── seed.ts             # Initial demo data
+│   └── schema.prisma       # Database models
 ├── types/
 │   └── html2pdf.d.ts       # Type declaration for html2pdf.js
 ├── vercel.json             # Vercel deployment config
@@ -102,10 +101,7 @@ echo "DATABASE_URL=\"postgresql://USER:PASSWORD@localhost:5432/rent_receipts?sch
 # 3. Push the Prisma schema to your database
 npm run db:push
 
-# 4. (Optional) Seed with demo data
-npm run db:seed
-
-# 5. Start the dev server
+# 4. Start the dev server
 npm run dev
 ```
 
@@ -148,13 +144,6 @@ vercel --prod
 ```
 
 Or connect your GitHub repository to Vercel and it will auto-deploy on every push.
-
-### 4. Seed Production Data (Optional)
-
-```bash
-# Run seed against production database
-DATABASE_URL="your-production-url" npm run db:seed
-```
 
 ## 📄 License
 
