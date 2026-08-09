@@ -26,7 +26,7 @@ import ReceiptGeneration from "@/components/ReceiptGeneration";
 import SettingsEditor from "@/components/SettingsEditor";
 
 // Default per-unit electricity rate (₹/unit) applied to new receipts
-const DEFAULT_ELEC_RATE = 7.95;
+const DEFAULT_ELEC_RATE = 8.50;
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<"controls" | "generation" | "settings">("controls");
