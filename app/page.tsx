@@ -53,7 +53,7 @@ export default function HomePage() {
   const [rentalTax, setRentalTax] = useState(0);
   const [prevUnit, setPrevUnit] = useState(0);
   const [currUnit, setCurrUnit] = useState(0);
-  const [elecRate, setElecRate] = useState(10);
+  const [elecRate, setElecRate] = useState(7.95);
   const [balanceDue, setBalanceDue] = useState(0);
   const [amountReceived, setAmountReceived] = useState(0);
   const [selectedReceivedById, setSelectedReceivedById] = useState<number>(0);
@@ -199,7 +199,7 @@ export default function HomePage() {
       setRentalTax(found.rentalTax);
       setPrevUnit(found.prevUnit);
       setCurrUnit(found.currUnit);
-      setElecRate(found.elecRate || 10);
+      setElecRate(found.elecRate || 7.95);
       setAmountReceived(found.amountReceived);
 
       // Restore the "Received By Manager" dropdown from the saved record.
@@ -436,7 +436,7 @@ export default function HomePage() {
     setRentalTax(0);
     setPrevUnit(0);
     setCurrUnit(0);
-    setElecRate(10);
+    setElecRate(7.95);
     setBalanceDue(0);
     setAmountReceived(0);
     setTenantName("");

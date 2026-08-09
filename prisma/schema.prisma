@@ -69,7 +69,7 @@ model Receipt {
   rentalTax               Float    @default(0)
   prevUnit                Float    @default(0)
   currUnit                Float    @default(0)
-  elecRate                Float    @default(0)
+  elecRate                Float    @default(7.95)
   elecTotalAmount         Float    @default(0)
   totalAmountToBeReceived Float    @default(0)
   amountReceived          Float    @default(0)
