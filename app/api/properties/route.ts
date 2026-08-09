@@ -85,40 +85,44 @@ export async function PUT(request: NextRequest) {
 
     const body = await request.json();
 
-    // Update property fields
-    const property = await prisma.property.update({
-      where: { id },
-      data: {
-        name: body.name ?? undefined,
-        ownerId: body.ownerId !== undefined ? Number(body.ownerId) : undefined,
-        sealUrl: body.sealUrl ?? undefined,
-      },
-    });
-
-    // If units are provided, replace all units for this property
-    if (body.units && Array.isArray(body.units)) {
-      await prisma.unit.deleteMany({ where: { propertyId: id } });
-      await prisma.unit.createMany({
-        data: body.units.map((u: any) => ({
-          propertyId: id,
-          floor: u.floor || "",
-          unit: u.unit || "",
-          tenantName: u.tenantName || "",
-          tenantPhone: u.tenantPhone || "",
-          rent: Number(u.rent) || 0,
-          water: Number(u.water) || 0,
-          tax: Number(u.tax) || 0,
-          prevBalance: Number(u.prevBalance) || 0,
-        })),
+    // Update property fields + replace units atomically in ONE transaction.
+    // Doing deleteMany/createMany as separate queries lets two concurrent PUTs
+    // interleave (delete, delete, insert, insert) and duplicate unit rows.
+    const property = await prisma.$transaction(async (tx) => {
+      await tx.property.update({
+        where: { id },
+        data: {
+          name: body.name ?? undefined,
+          ownerId: body.ownerId !== undefined ? Number(body.ownerId) : undefined,
+          sealUrl: body.sealUrl ?? undefined,
+        },
       });
-    }
 
-    const updated = await prisma.property.findUnique({
-      where: { id },
-      include: { owner: true, units: true },
+      // If units are provided, replace all units for this property
+      if (body.units && Array.isArray(body.units)) {
+        await tx.unit.deleteMany({ where: { propertyId: id } });
+        await tx.unit.createMany({
+          data: body.units.map((u: any) => ({
+            propertyId: id,
+            floor: u.floor || "",
+            unit: u.unit || "",
+            tenantName: u.tenantName || "",
+            tenantPhone: u.tenantPhone || "",
+            rent: Number(u.rent) || 0,
+            water: Number(u.water) || 0,
+            tax: Number(u.tax) || 0,
+            prevBalance: Number(u.prevBalance) || 0,
+          })),
+        });
+      }
+
+      return tx.property.findUnique({
+        where: { id },
+        include: { owner: true, units: true },
+      });
     });
 
-    return NextResponse.json(updated);
+    return NextResponse.json(property);
   } catch (error) {
     console.error("Error updating property:", error);
     return NextResponse.json(

@@ -69,6 +69,14 @@ export default function HomePage() {
   // receipt).
   const [lookupToken, setLookupToken] = useState(0);
 
+  // Serialize property saves so two overlapping commits can't race each other.
+  // Without this, rapid onBlur commits (while typing in the unit table) fire
+  // concurrent PUTs that can interleave on the server and multiply unit rows.
+  const pendingPropertyUpdates = useRef<
+    Array<{ id: number; data: { name?: string; ownerId?: number; sealUrl?: string; units?: Property["units"] } }>
+  >([]);
+  const isPropertyUpdateRunning = useRef(false);
+
   // Load data from backend on mount
   useEffect(() => {
     async function loadData() {
@@ -462,13 +470,27 @@ export default function HomePage() {
     }
   };
 
-  const handleUpdateProperty = async (id: number, data: { name?: string; ownerId?: number; sealUrl?: string; units?: Property["units"] }) => {
+  const flushPropertyUpdates = useCallback(async () => {
+    if (isPropertyUpdateRunning.current) return;
+    isPropertyUpdateRunning.current = true;
     try {
-      const updated = await updateProperty(id, data);
-      setTemplates(templates.map((t) => (t.id === id ? updated : t)));
-    } catch (err) {
-      console.error("Failed to update property:", err);
+      while (pendingPropertyUpdates.current.length > 0) {
+        const next = pendingPropertyUpdates.current.shift()!;
+        try {
+          const updated = await updateProperty(next.id, next.data);
+          setTemplates((prev) => prev.map((t) => (t.id === next.id ? updated : t)));
+        } catch (err) {
+          console.error("Failed to update property:", err);
+        }
+      }
+    } finally {
+      isPropertyUpdateRunning.current = false;
     }
+  }, []);
+
+  const handleUpdateProperty = async (id: number, data: { name?: string; ownerId?: number; sealUrl?: string; units?: Property["units"] }) => {
+    pendingPropertyUpdates.current.push({ id, data });
+    await flushPropertyUpdates();
   };
 
   const handleDeleteProperty = async (id: number) => {
