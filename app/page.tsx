@@ -25,6 +25,9 @@ import ReceiptPreview from "@/components/ReceiptPreview";
 import ReceiptGeneration from "@/components/ReceiptGeneration";
 import SettingsEditor from "@/components/SettingsEditor";
 
+// Default per-unit electricity rate (₹/unit) applied to new receipts
+const DEFAULT_ELEC_RATE = 7.95;
+
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<"controls" | "generation" | "settings">("controls");
   const [receiptStep, setReceiptStep] = useState(1);
@@ -53,7 +56,7 @@ export default function HomePage() {
   const [rentalTax, setRentalTax] = useState(0);
   const [prevUnit, setPrevUnit] = useState(0);
   const [currUnit, setCurrUnit] = useState(0);
-  const [elecRate, setElecRate] = useState(7.95);
+  const [elecRate, setElecRate] = useState(DEFAULT_ELEC_RATE);
   const [balanceDue, setBalanceDue] = useState(0);
   const [amountReceived, setAmountReceived] = useState(0);
   const [selectedReceivedById, setSelectedReceivedById] = useState<number>(0);
@@ -199,7 +202,7 @@ export default function HomePage() {
       setRentalTax(found.rentalTax);
       setPrevUnit(found.prevUnit);
       setCurrUnit(found.currUnit);
-      setElecRate(found.elecRate || 7.95);
+      setElecRate(found.elecRate || DEFAULT_ELEC_RATE);
       setAmountReceived(found.amountReceived);
 
       // Restore the "Received By Manager" dropdown from the saved record.
@@ -436,7 +439,7 @@ export default function HomePage() {
     setRentalTax(0);
     setPrevUnit(0);
     setCurrUnit(0);
-    setElecRate(7.95);
+    setElecRate(DEFAULT_ELEC_RATE);
     setBalanceDue(0);
     setAmountReceived(0);
     setTenantName("");
