@@ -256,6 +256,31 @@ export default function SettingsEditor({
   const totalPages = Math.max(1, Math.ceil(savedReceipts.length / RECEIPTS_PER_PAGE));
   const safePage = Math.min(receiptsPage, totalPages);
 
+  // Ledger status: only the LATEST chronological receipt per unit chain
+  // (property + floor + unit + tenant) shows an active DUE / FULL PAID badge.
+  // Older receipts whose unpaid balance was carried forward into a newer bill
+  // get a neutral badge, so active dues are never double-counted in the history.
+  const latestReceiptIds = React.useMemo(() => {
+    const groups = new Map<string, Receipt[]>();
+    for (const r of savedReceipts) {
+      const key = `${r.propertyName}|${r.floor}|${r.unit}|${r.tenantName}`;
+      const list = groups.get(key) ?? [];
+      list.push(r);
+      groups.set(key, list);
+    }
+    const latest = new Set<number>();
+    groups.forEach((list) => {
+      const newest = [...list].sort((a, b) => {
+        const da = new Date(a.date).getTime();
+        const db = new Date(b.date).getTime();
+        if (da !== db) return db - da;
+        return b.id - a.id;
+      })[0];
+      if (newest) latest.add(newest.id);
+    });
+    return latest;
+  }, [savedReceipts]);
+
   return (
     <div className="space-y-6">
       {/* Property Templates & Unit Master */}
@@ -616,10 +641,16 @@ export default function SettingsEditor({
                         <td className="p-2 text-right font-mono">₹{r.totalAmountToBeReceived.toFixed(2)}</td>
                         <td className="p-2 text-right font-mono text-green-700 font-bold">₹{r.amountReceived.toFixed(2)}</td>
                         <td className="p-2 text-center">
-                          {r.isFullPaid ? (
-                            <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded text-[10px] font-bold">FULL PAID</span>
+                          {latestReceiptIds.has(r.id) ? (
+                            r.isFullPaid ? (
+                              <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded text-[10px] font-bold">FULL PAID</span>
+                            ) : (
+                              <span className="bg-red-100 text-red-800 px-2 py-0.5 rounded text-[10px] font-bold">DUE: ₹{r.dueAmount.toFixed(2)}</span>
+                            )
+                          ) : r.isFullPaid ? (
+                            <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-bold">SETTLED</span>
                           ) : (
-                            <span className="bg-red-100 text-red-800 px-2 py-0.5 rounded text-[10px] font-bold">DUE: ₹{r.dueAmount.toFixed(2)}</span>
+                            <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[10px] font-bold">CARRIED FORWARD</span>
                           )}
                         </td>
                       </tr>

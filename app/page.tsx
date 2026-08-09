@@ -114,6 +114,14 @@ export default function HomePage() {
     }
   }, [selectedTemplateId]);
 
+  // Release the lookup guard after the hydration render completes, so a later
+  // manual template change is not accidentally swallowed.
+  useEffect(() => {
+    if (isLookupRef.current) {
+      isLookupRef.current = false;
+    }
+  }, [receiptNo]);
+
   // Auto-increment receipt number when new receipts are saved
   useEffect(() => {
     if (savedReceipts.length > 0) {
@@ -159,29 +167,46 @@ export default function HomePage() {
   const handleLookupReceipt = () => {
     const found = savedReceipts.find((r) => parseInt(r.receiptNo, 10) === parseInt(lookupReceiptNo, 10));
     if (found) {
+      // Block auto-calculation side-effects (template auto-select / prev-balance
+      // carry-forward) while we hydrate the historical snapshot below.
+      isLookupRef.current = true;
+
       const matchedTemplate = templates.find((t) => t.name === found.propertyName);
       if (matchedTemplate && String(matchedTemplate.id) !== selectedTemplateId) {
-        isLookupRef.current = true;
         setSelectedTemplateId(String(matchedTemplate.id));
       }
+
+      // Strictly hydrate the form from the EXACT values saved on this receipt
+      // record, so editing/printing an old receipt never recomputes and
+      // overwrites the historical figures.
       setReceiptNo(found.receiptNo);
       setReceiptDate(found.date);
       setTenantName(found.tenantName);
       setTenantPhone(found.tenantPhone || "");
       setSelectedFloor(found.floor);
       setSelectedUnit(found.unit);
-      setPrevUnit(found.currUnit);
-      const previousPendingBalance = found.dueAmount > 0 ? found.dueAmount : 0;
-      setBalanceDue(previousPendingBalance);
       setPeriodStart(found.periodStart);
       setPeriodEnd(found.periodEnd);
       setPaymentMode(found.paymentMode);
       setRentMaint(found.rentMaint);
       setWaterCharges(found.waterCharges);
       setRentalTax(found.rentalTax);
-      setCurrUnit(0);
+      setPrevUnit(found.prevUnit);
+      setCurrUnit(found.currUnit);
       setElecRate(found.elecRate || 10);
-      setAmountReceived(0);
+      setAmountReceived(found.amountReceived);
+
+      // The "Previous Balance Due" printed on this receipt is the balance that
+      // was carried INTO it. It is not persisted as its own column, but it is
+      // recovered exactly from the saved snapshot:
+      //   totalAmountToBeReceived = rentMaint + waterCharges + rentalTax + elecTotalAmount + balanceDue
+      const currentMonthTotal =
+        (found.rentMaint || 0) +
+        (found.waterCharges || 0) +
+        (found.rentalTax || 0) +
+        (found.elecTotalAmount || 0);
+      setBalanceDue((found.totalAmountToBeReceived || 0) - currentMonthTotal);
+
       alert("Receipt details loaded! You can now edit and save changes.");
     } else {
       alert("Receipt not found!");
@@ -211,39 +236,58 @@ export default function HomePage() {
   const isFullPaid = dueAmount <= 0 && totalAmountToBeReceived > 0;
   const activeReceivedBy = managers.find((m) => m.id === selectedReceivedById) || managers[0];
 
+  const persistReceipt = async () => {
+    if (!currentTemplate || !activeReceivedBy) {
+      throw new Error("Missing template or manager");
+    }
+
+    // Idempotency guard: if this exact receipt snapshot is already persisted,
+    // don't create a duplicate ledger row (e.g. Save → Share, or Share twice).
+    const alreadySaved = savedReceipts.some(
+      (r) =>
+        r.receiptNo === receiptNo &&
+        r.tenantName === tenantName &&
+        r.amountReceived === amountReceived &&
+        r.dueAmount === dueAmount
+    );
+    if (alreadySaved) return;
+
+    await createReceipt({
+      receiptNo,
+      date: receiptDate,
+      propertyName: currentTemplate.name,
+      ownerName: templateOwner?.name || "",
+      floor: selectedFloor,
+      unit: selectedUnit,
+      tenantName,
+      tenantPhone,
+      periodStart,
+      periodEnd,
+      paymentMode,
+      rentMaint,
+      waterCharges,
+      rentalTax,
+      prevUnit,
+      currUnit,
+      elecRate,
+      elecTotalAmount,
+      totalAmountToBeReceived,
+      amountReceived,
+      dueAmount,
+      isFullPaid,
+      receivedBy: activeReceivedBy.name,
+    });
+
+    // Refresh the receipts list so the ledger and the auto-incremented receipt
+    // number stay in sync.
+    const updated = await fetchReceipts();
+    setSavedReceipts(updated);
+  };
+
   const handleSaveReceipt = async () => {
-    if (!currentTemplate || !activeReceivedBy) return;
     setIsSaving(true);
     try {
-      await createReceipt({
-        receiptNo,
-        date: receiptDate,
-        propertyName: currentTemplate.name,
-        ownerName: templateOwner?.name || "",
-        floor: selectedFloor,
-        unit: selectedUnit,
-        tenantName,
-        tenantPhone,
-        periodStart,
-        periodEnd,
-        paymentMode,
-        rentMaint,
-        waterCharges,
-        rentalTax,
-        prevUnit,
-        currUnit,
-        elecRate,
-        elecTotalAmount,
-        totalAmountToBeReceived,
-        amountReceived,
-        dueAmount,
-        isFullPaid,
-        receivedBy: activeReceivedBy.name,
-      });
-
-      // Refresh receipts list
-      const updated = await fetchReceipts();
-      setSavedReceipts(updated);
+      await persistReceipt();
       alert(`Receipt #${receiptNo} saved successfully!`);
       clearForm();
     } catch (err) {
@@ -258,50 +302,91 @@ export default function HomePage() {
     const element = receiptRef.current;
     if (!element) return;
 
-    // Dynamically import html2pdf (client-side only)
-    const html2pdf = (await import("html2pdf.js")).default;
+    setIsSaving(true);
 
-    const originalWidth = element.style.width;
-    const originalMaxWidth = element.style.maxWidth;
-    const originalMinHeight = element.style.minHeight;
-    const originalPadding = element.style.padding;
-    const originalMargin = element.style.margin;
-
-    element.style.width = "750px";
-    element.style.maxWidth = "750px";
-    element.style.minHeight = "auto";
-    element.style.padding = "24px";
-    element.style.margin = "0 auto";
-
-    const images = element.getElementsByTagName("img");
-    const imagePromises = Array.from(images).map((img) => {
-      if (img.complete) return Promise.resolve();
-      return new Promise((resolve) => {
-        img.onload = resolve;
-        img.onerror = resolve;
-      });
-    });
-    await Promise.all(imagePromises);
-
-    const opt = {
-      margin: [0.2, 0.2, 0.2, 0.2],
-      filename: `Rent_Receipt_${receiptNo}_${tenantName.replace(/\s+/g, "_")}.pdf`,
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, scrollY: 0, scrollX: 0 },
-      jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
-      pagebreak: { mode: "avoid-all" },
-    };
+    // 1. Persist the receipt to the backend BEFORE generating the PDF, so a
+    //    shared/downloaded receipt is always backed by a ledger record.
+    try {
+      await persistReceipt();
+    } catch (err) {
+      console.error("Failed to save receipt before sharing:", err);
+      alert("Could not save the receipt. Sharing cancelled. Please try again.");
+      setIsSaving(false);
+      return;
+    }
 
     try {
-      await html2pdf().set(opt).from(element).save();
-    } catch (err) {
-      console.error("PDF Export Error:", err);
-    } finally {
+      // 2. Generate the PDF blob from the current receipt.
+      const html2pdf = (await import("html2pdf.js")).default;
+
+      const originalWidth = element.style.width;
+      const originalMaxWidth = element.style.maxWidth;
+      const originalMinHeight = element.style.minHeight;
+      const originalPadding = element.style.padding;
+      const originalMargin = element.style.margin;
+
+      element.style.width = "750px";
+      element.style.maxWidth = "750px";
+      element.style.minHeight = "auto";
+      element.style.padding = "24px";
+      element.style.margin = "0 auto";
+
+      const images = element.getElementsByTagName("img");
+      const imagePromises = Array.from(images).map((img) => {
+        if (img.complete) return Promise.resolve();
+        return new Promise((resolve) => {
+          img.onload = resolve;
+          img.onerror = resolve;
+        });
+      });
+      await Promise.all(imagePromises);
+
+      const opt = {
+        margin: [0.2, 0.2, 0.2, 0.2],
+        filename: `Rent_Receipt_${receiptNo}_${tenantName.replace(/\s+/g, "_")}.pdf`,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, scrollY: 0, scrollX: 0 },
+        jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
+        pagebreak: { mode: "avoid-all" },
+      };
+
+      const blob = await html2pdf().set(opt).from(element).output("blob");
+      const pdfFile = new File(
+        [blob],
+        `Rent_Receipt_${receiptNo}_${tenantName.replace(/\s+/g, "_")}.pdf`,
+        { type: "application/pdf" }
+      );
+
+      // 3. Native Web Share sheet on mobile; standard download fallback elsewhere.
+      if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+        try {
+          await navigator.share({
+            files: [pdfFile],
+            title: `Rent Receipt #${receiptNo}`,
+            text: `Rent Receipt #${receiptNo} for ${tenantName}`,
+          });
+        } catch (shareErr) {
+          // User dismissed the sheet (AbortError) or sharing is unavailable —
+          // fall back to a direct download.
+          if (shareErr instanceof Error && shareErr.name !== "AbortError") {
+            console.error("Web Share failed:", shareErr);
+          }
+          await html2pdf().set(opt).from(element).save();
+        }
+      } else {
+        await html2pdf().set(opt).from(element).save();
+      }
+
       element.style.width = originalWidth;
       element.style.maxWidth = originalMaxWidth;
       element.style.minHeight = originalMinHeight;
       element.style.padding = originalPadding;
       element.style.margin = originalMargin;
+    } catch (err) {
+      console.error("PDF Export Error:", err);
+      alert("Failed to generate / share the PDF. Please try again.");
+    } finally {
+      setIsSaving(false);
     }
   };
 

@@ -47,8 +47,8 @@ export default function ReceiptGeneration({
         <button onClick={onSave} disabled={isSaving} className="flex-1 bg-indigo-600 text-white font-medium py-3 px-4 rounded-lg hover:bg-indigo-700 transition text-sm flex items-center justify-center gap-2 disabled:opacity-50">
           {isSaving ? "Saving..." : "💾 Save to Backend"}
         </button>
-        <button onClick={onDownloadPDF} className="flex-1 bg-green-600 text-white font-medium py-3 px-4 rounded-lg hover:bg-green-700 transition text-sm flex items-center justify-center gap-2">
-          📤 Share PDF
+        <button onClick={onDownloadPDF} disabled={isSaving} className="flex-1 bg-green-600 text-white font-medium py-3 px-4 rounded-lg hover:bg-green-700 transition text-sm flex items-center justify-center gap-2 disabled:opacity-50">
+          {isSaving ? "Saving & Sharing..." : "📤 Share PDF"}
         </button>
       </div>
     </div>
