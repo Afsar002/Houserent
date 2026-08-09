@@ -73,7 +73,7 @@ export default function HomePage() {
   // Without this, rapid onBlur commits (while typing in the unit table) fire
   // concurrent PUTs that can interleave on the server and multiply unit rows.
   const pendingPropertyUpdates = useRef<
-    Array<{ id: number; data: { name?: string; ownerId?: number; sealUrl?: string; units?: Property["units"] } }>
+    Array<{ id: number; data: { name?: string; ownerId?: number; sealUrl?: string; qrUrl?: string; units?: Property["units"] } }>
   >([]);
   const isPropertyUpdateRunning = useRef(false);
 
@@ -460,7 +460,7 @@ export default function HomePage() {
     setPaymentMode("Cash");
   };
 
-  const handleAddProperty = async (data: { name: string; ownerId: number; sealUrl?: string; units?: Property["units"] }) => {
+  const handleAddProperty = async (data: { name: string; ownerId: number; sealUrl?: string; qrUrl?: string; units?: Property["units"] }) => {
     try {
       const created = await createProperty(data);
       setTemplates([...templates, created]);
@@ -488,7 +488,7 @@ export default function HomePage() {
     }
   }, []);
 
-  const handleUpdateProperty = async (id: number, data: { name?: string; ownerId?: number; sealUrl?: string; units?: Property["units"] }) => {
+  const handleUpdateProperty = async (id: number, data: { name?: string; ownerId?: number; sealUrl?: string; qrUrl?: string; units?: Property["units"] }) => {
     pendingPropertyUpdates.current.push({ id, data });
     await flushPropertyUpdates();
   };

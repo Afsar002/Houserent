@@ -127,6 +127,12 @@ export default function ReceiptPreview({
                 <span>Online / UPI</span>
               </div>
             </div>
+            {template?.qrUrl && (
+              <div className="mt-3 flex justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={template.qrUrl} alt="UPI QR Code" className="h-24 w-24 object-contain" />
+              </div>
+            )}
           </div>
 
           <div className="col-span-8 border rounded-lg overflow-hidden">

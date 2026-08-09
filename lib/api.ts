@@ -42,6 +42,7 @@ export async function createProperty(data: {
   name: string;
   ownerId: number;
   sealUrl?: string;
+  qrUrl?: string;
   units?: Property["units"];
 }): Promise<Property> {
   const res = await fetch("/api/properties", {
@@ -58,6 +59,7 @@ export async function updateProperty(
     name?: string;
     ownerId?: number;
     sealUrl?: string;
+    qrUrl?: string;
     units?: Property["units"];
   }
 ): Promise<Property> {

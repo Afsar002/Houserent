@@ -9,8 +9,8 @@ interface SettingsEditorProps {
   owners: Owner[];
   managers: Manager[];
   savedReceipts: Receipt[];
-  onAddProperty: (data: { name: string; ownerId: number; sealUrl?: string; units?: Property["units"] }) => Promise<void>;
-  onUpdateProperty: (id: number, data: { name?: string; ownerId?: number; sealUrl?: string; units?: Property["units"] }) => Promise<void>;
+  onAddProperty: (data: { name: string; ownerId: number; sealUrl?: string; qrUrl?: string; units?: Property["units"] }) => Promise<void>;
+  onUpdateProperty: (id: number, data: { name?: string; ownerId?: number; sealUrl?: string; qrUrl?: string; units?: Property["units"] }) => Promise<void>;
   onDeleteProperty: (id: number) => Promise<void>;
   onAddOwner: (data: { name: string; address?: string; phone?: string }) => Promise<Owner>;
   onUpdateOwner: (id: number, data: { name?: string; address?: string; phone?: string }) => Promise<Owner>;
@@ -71,6 +71,7 @@ export default function SettingsEditor({
       name: newPropertyName,
       ownerId: owners[0]?.id || 1,
       sealUrl: "",
+      qrUrl: "",
       units: [],
     });
     setNewPropertyName("");
@@ -173,6 +174,24 @@ export default function SettingsEditor({
         name: tpl.name,
         ownerId: tpl.ownerId,
         sealUrl: compressed,
+        qrUrl: tpl.qrUrl,
+        units: tpl.units,
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleQrUpload = async (index: number, file: File | undefined) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const compressed = await compressImage(reader.result as string);
+      const tpl = localTemplates[index];
+      await onUpdateProperty(tpl.id, {
+        name: tpl.name,
+        ownerId: tpl.ownerId,
+        sealUrl: tpl.sealUrl,
+        qrUrl: compressed,
         units: tpl.units,
       });
     };
@@ -192,6 +211,7 @@ export default function SettingsEditor({
       name: tpl.name,
       ownerId: tpl.ownerId,
       sealUrl: tpl.sealUrl,
+      qrUrl: tpl.qrUrl,
       units: tpl.units,
     });
   };
@@ -210,6 +230,7 @@ export default function SettingsEditor({
       name: tpl.name,
       ownerId: tpl.ownerId,
       sealUrl: tpl.sealUrl,
+      qrUrl: tpl.qrUrl,
       units: tpl.units,
     });
   };
@@ -230,6 +251,7 @@ export default function SettingsEditor({
       name: tpl.name,
       ownerId: tpl.ownerId,
       sealUrl: tpl.sealUrl,
+      qrUrl: tpl.qrUrl,
       units: updatedUnits,
     });
   };
@@ -242,6 +264,7 @@ export default function SettingsEditor({
       name: tpl.name,
       ownerId: tpl.ownerId,
       sealUrl: tpl.sealUrl,
+      qrUrl: tpl.qrUrl,
       units: updatedUnits,
     });
   };
@@ -477,6 +500,21 @@ export default function SettingsEditor({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={tpl.sealUrl} alt="Seal Preview" className="h-10 border p-1 rounded bg-white" />
                   )}
+                </div>
+                <div className="mt-3">
+                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">QR Code Upload</label>
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleQrUpload(index, e.target.files?.[0])}
+                      className="text-xs"
+                    />
+                    {tpl.qrUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={tpl.qrUrl} alt="QR Preview" className="h-10 border p-1 rounded bg-white" />
+                    )}
+                  </div>
                 </div>
                 <div className="mt-2 flex gap-2">
                   <button onClick={() => handleDeleteProperty(tpl.id)} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded hover:bg-red-100">

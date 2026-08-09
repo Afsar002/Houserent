@@ -30,6 +30,7 @@ export interface Property {
   name: string;
   ownerId: number;
   sealUrl: string;
+  qrUrl: string;
   units: Unit[];
   owner?: Owner;
 }

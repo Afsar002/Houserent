@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
         name: body.name,
         ownerId: Number(body.ownerId) || 1,
         sealUrl: body.sealUrl || "",
+        qrUrl: body.qrUrl || "",
         units: body.units?.length
           ? {
               create: body.units.map((u: any) => ({
@@ -95,6 +96,7 @@ export async function PUT(request: NextRequest) {
           name: body.name ?? undefined,
           ownerId: body.ownerId !== undefined ? Number(body.ownerId) : undefined,
           sealUrl: body.sealUrl ?? undefined,
+          qrUrl: body.qrUrl ?? undefined,
         },
       });
 
